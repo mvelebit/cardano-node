@@ -57,6 +57,9 @@ let
                TraceMempool         = true;
                TraceTxInbound       = true;
 
+               StubComputeDuration  = 0.5;
+               StubComputePrecision = 0.01;
+
                defaultScribes = [
                  [ "StdoutSK" "stdout" ]
                ];
