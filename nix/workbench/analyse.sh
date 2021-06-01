@@ -55,7 +55,7 @@ EOF
 
         msg "analysing.."
         local locli_args=(
-            --genesis         "$dir"/genesis/genesis.json
+            --genesis         "$dir"/genesis.json
             --run-metafile    "$dir"/meta.json
             ## ->
             --logobjects-json "$adir"/logs-cluster.logobjects.json
@@ -83,7 +83,7 @@ EOF
         msg "analysing logs of:  $mach  (lines: $(wc -l "$consolidated"))"
 
         local locli_args=(
-            --genesis         "$dir"/genesis/genesis.json
+            --genesis         "$dir"/genesis.json
             --run-metafile    "$dir"/meta.json
             ## ->
             --logobjects-json "$adir"/logs-$mach.logobjects.json
