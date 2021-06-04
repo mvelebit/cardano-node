@@ -157,6 +157,6 @@ EOF
     lostream-fixup-jqexpr )
         usage="USAGE: wb supervisor $op"
 
-        echo '| $mapp2n[0] as $map | . * { host: $map[.pid] }';;
+        echo '| $mapp2n[0] as $map | . * { host: ($map[.pid] // $dirHostname) }';;
 
     * ) usage_supervisor;; esac

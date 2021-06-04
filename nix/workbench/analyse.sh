@@ -14,10 +14,11 @@ EOF
 }
 
 analyse() {
-local skip_preparation= time=
+local skip_preparation= time= dump_logobjects=
 while test $# -gt 0
 do case "$1" in
        --reanalyse | --re ) skip_preparation='true';;
+       --dump-logobjects )  dump_logobjects='true';;
        --time )             time='eval time';;
        * ) break;; esac; shift; done
 
@@ -37,15 +38,6 @@ case "$op" in
         ## 0. subset what we care about into the keyfile
         local keyfile=$adir/substring-keys
         locli analyse substring-keys | grep -v 'Temporary modify' > "$keyfile"
-        cat >>"$keyfile" <<EOF
-TraceForgedBlock
-AddedToCurrentChain
-TraceChainSyncServerReadBlocked.AddBlock
-TraceChainSyncServerRead.AddBlock
-TraceBlockFetchServerSendBlock
-TraceDownloadedHeader
-CompletedBlockFetch
-EOF
 
         ## 1. enumerate logs, filter by keyfile & consolidate
         local logdirs=("$dir"/node-*/)
@@ -62,7 +54,7 @@ EOF
             )
             for d in "${logdirs[@]}"
             do ## TODO: supervisor-specific logfile layout
-                grep -hFf "$keyfile" $(ls "$d"/stdout* | tac) | jq "${jq_args[@]}" > \
+                grep -hFf "$keyfile" $(ls "$d"/stdout* | tac) | jq "${jq_args[@]}" --arg dirHostname "$(basename "$d")" > \
                 "$adir"/logs-$(basename "$d").flt.json &
             done
             wait
@@ -75,13 +67,46 @@ EOF
             --genesis         "$dir"/genesis.json
             --run-metafile    "$dir"/meta.json
             ## ->
-            # --logobjects-json "$adir"/logs-cluster.logobjects.json
             --timeline-pretty "$adir"/block-propagation.txt
             --analysis-json   "$adir"/block-propagation.json
         )
+        if test -n "$dump_logobjects"; then
+            locli_args+=(--logobjects-json "$adir"/logs-cluster.logobjects.json); fi
 
         ${time} locli 'analyse' 'block-propagation' \
             "${locli_args[@]}" "$adir"/*.flt.json;;
+
+    grep-filtered-logs | grep | g )
+        local usage="USAGE: wb analyse $op BLOCK [MACHSPEC=*] [RUN-NAME=current]"
+        local expr=$1
+        local mach=${2:-*}
+        local name=${3:-current}
+        local dir=$(run get "$name")
+        local adir=$dir/analysis
+
+        grep -h "$expr" "$adir"/logs-$mach.flt.json;;
+
+    list-blocks | blocks | bs )
+        local usage="USAGE: wb analyse $op [RUN-NAME=current]"
+        local name=${1:-current}
+        local dir=$(run get "$name")
+        local adir=$dir/analysis
+
+        fgrep -h "TraceForgedBlock" "$adir"/*.flt.json |
+            jq '{ at: .at, host: .host } * .data | del(.peer) | del(.slot)' -c |
+            sort | uniq;;
+
+    block-propagation-block | bpb )
+        local usage="USAGE: wb analyse $op BLOCK [RUN-NAME=current]"
+        local block=$1
+        local name=${2:-current}
+        local dir=$(run get "$name")
+        local adir=$dir/analysis
+
+        grep -h "$block" "$adir"/*.flt.json |
+            grep 'AddBlock\|TraceForgedBlock\|AddedToCurrentChain' |
+            jq '{ at: .at, host: .host } * .data | del(.peer) | del(.slot)' -c |
+            sort --stable | uniq;;
 
     machine-timeline | machine | mt )
         local usage="USAGE: wb analyse $op [RUN-NAME=current] [MACH-NAME=node-1]"
@@ -109,7 +134,6 @@ EOF
             --genesis         "$dir"/genesis.json
             --run-metafile    "$dir"/meta.json
             ## ->
-            --logobjects-json "$adir"/logs-$mach.logobjects.json
             --slotstats-json  "$adir"/logs-$mach.slotstats.json
             --timeline-pretty "$adir"/logs-$mach.timeline.txt
             --stats-csv       "$adir"/logs-$mach.stats.csv
@@ -119,6 +143,8 @@ EOF
             # --derived-vectors-0-csv   "$adir"/logs-$mach".derived.1.csv
             # --derived-vectors-1-csv   "$adir"/logs-$mach.derived.1.csv
         )
+        if test -n "$dump_logobjects"; then
+            locli_args+=(--logobjects-json "$adir"/logs-$mach.logobjects.json); fi
 
         ${time} locli 'analyse' 'machine-timeline' \
             "${locli_args[@]}" "$consolidated";;
