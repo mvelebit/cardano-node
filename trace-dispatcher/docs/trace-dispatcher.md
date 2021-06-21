@@ -533,31 +533,71 @@ configureTracers :: Monad m => TraceConfig -> Documented a -> [Trace m a]-> m ()
 These are the options that can be configured based on a namespace:
 
 ```haskell
-data ConfigOption = ConfigOption
-{   -- | Severity level
-    coSeverity     :: SeverityF
-    -- | Detail level
-  , coDetailLevel  :: DetailLevel
-}
+data ConfigOption =
+    -- | Severity level for filtering (default is WarningF)
+    CoSeverity SeverityF
+    -- | Detail level of message representation (Default is DRegular)
+  | CoDetail DetailLevel
+  -- | To which backend to pass
+  -- Default is [EKGBackend, Forwarder, Stdout HumanFormatColoured]
+  | CoBackend [BackendConfig]
+  -- | Construct a limiter with name (Text) and limiting to the Double,
+  -- which represents frequency in number of messages per second
+  | CoLimiter Text Double
 
-data TraceConfiguration = TraceConfiguration {
-  ,  tcOptions :: Map Namespace ConfigOption
-  , ...
+data BackendConfig =
+    Forwarder
+  | Stdout FormatLogging
+  | EKGBackend  
+
+data TraceConfig = TraceConfig {
+     -- | Options specific to a certain namespace
+    tcOptions            :: Map.Map Namespace [ConfigOption]
+     -- | Options for trace-forwarder    
+  , tcForwarder          :: RemoteAddr
+  , tcForwarderQueueSize :: Int
 }
 ```
 
-More configuration options e.g. for different transformers and __trace-outs__ can be added by this mechanism.
+If the configuration file is in Yaml format, the following entry means, that by default
+all messages with Info or higher Priority or higher are shown:
 
-### Decide complete configuration
-
-We still need to fully decide on the complete configuration format.
-
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
 ```
-  "StdoutOutputs": []                      -- valid
-  "StdoutOutputs": ["Human"]               -- valid
-  "StdoutOutputs": ["Machine"]             -- valid
-  "StdoutOutputs": ["Human", "Machine"]    -- ERROR!
-  "ForwarderOutputs": ["Human", "Machine"] -- any combination is valid
+
+But if you want to see Debug messages of the ChainDB tracer, then add:
+
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
+  - ns: Node.ChainDB
+    severity: DebugF
+```
+
+And if you never want to see any message of the AcceptPolicy tracer, then add:
+
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
+  - ns: Node.ChainDB
+    severity: DebugF    
+  - ns: Node.AcceptPolicy
+    severity: SilentF    
+```
+
+As another example, if you don't want to see more then 1 BlockFetchClient
+message per second, then add this to your configuration file:
+
+```yaml
+TraceOptionLimiter:
+  - ns: Node.BlockFetchClient
+    limiterName: BlockFetchLimiter
+    limiterFrequency: 1.0   
 ```
 
 ## Documentation
