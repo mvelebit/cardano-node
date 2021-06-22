@@ -5,99 +5,33 @@
 # Contents
 
 0. [Contents](#Contents)
-   - [ ] no-dead-links
 1. [Document status](#Document-status)
 2. [Introduction](#Introduction)
    1. [Motivation](#motivation)
-      - [x] edit
-      - [x] agree
    2. [Design decisions](#Design-decisions)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Overview and terminology](#Overview-and-terminology)
-      - [x] edit
-      - [x] agree
 3. [Interface overview](#Interface-overview)
    1. [The trace / tracer duality](#The-trace--tracer-duality)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    2. [Emitting traces](#Emitting-traces)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Tracer namespace](#Tracer-namespace)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    4. [Trace context](#Trace-context)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    5. [Filter context](#Filter-context)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
       1. [Severity](#Severity)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
       2. [Privacy](#Privacy)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
       3. [Frequency](#Frequency)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
    6. [Presentation](#Presentation)
       1. [Formatting](#Formatting)
-        - [x] edit
-        - [ ] agree
-        - [ ] complete
       2. [Detail level](#Detail-level)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
    8. [Fold-based aggregation](#Fold-based-aggregation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    9. [Dispatcher routing toolkit](#Dispatcher-routing-toolkit)
-      - [x] discuss
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    10. [Configuration](#Configuration)
-      - [x] edit
-      - [ ] agree
-      - [ ] complete
    11. [Documentation](#Documentation)
-      - [x] edit
-      - [ ] agree
-      - [ ] complete
 4. [Integration and implementation in the node](#Integration-and-implementation-in-the-node)
    1. [Overall tracing setup](#Overall-tracing-setup)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    2. [Trace-outs](#Trace-outs)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Explicit trace filtering](#Explicit-trace-filtering)
-       - [x] edit
-       - [x] agree
-       - [ ] complete
    4. [Confidentiality and privacy filtering implementation](#Confidentiality-and-privacy-filtering-implementation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    5. [Documentation generation](#Documentation-generation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
 5. [Appendix](#Appendix)
    1. [Decisions](#Decisions)
    2. [Future work](#Future-work)
@@ -122,7 +56,7 @@ To do list:
 * [x] [Decide namespace-aware configuration](#Decide-namespace-aware-configuration)
 * [ ] [Discuss impact of missing documentation entries](#Discuss-impact-of-missing-documentation-entries)
 * [x] [Decide missing configuration](#Decide-missing-configuration)
-* [ ] [Decide complete configuration](#Decide-complete-configuration)
+* [x] [Decide complete configuration](#Decide-complete-configuration)
 * [ ] [Discuss possibility of pure, thread-safe aggregation](#Discuss-possibility-of-pure-thread-safe-aggregation)
 * [ ] [Decide trace-outs types](#Decide-trace-outs-types)
 * [ ] Agree on editing.
