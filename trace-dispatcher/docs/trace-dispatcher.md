@@ -5,99 +5,33 @@
 # Contents
 
 0. [Contents](#Contents)
-   - [ ] no-dead-links
 1. [Document status](#Document-status)
 2. [Introduction](#Introduction)
    1. [Motivation](#motivation)
-      - [x] edit
-      - [x] agree
    2. [Design decisions](#Design-decisions)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Overview and terminology](#Overview-and-terminology)
-      - [x] edit
-      - [x] agree
 3. [Interface overview](#Interface-overview)
    1. [The trace / tracer duality](#The-trace--tracer-duality)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    2. [Emitting traces](#Emitting-traces)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Tracer namespace](#Tracer-namespace)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    4. [Trace context](#Trace-context)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    5. [Filter context](#Filter-context)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
       1. [Severity](#Severity)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
       2. [Privacy](#Privacy)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
       3. [Frequency](#Frequency)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
    6. [Presentation](#Presentation)
       1. [Formatting](#Formatting)
-        - [x] edit
-        - [ ] agree
-        - [ ] complete
       2. [Detail level](#Detail-level)
-        - [x] edit
-        - [x] agree
-        - [ ] complete
    8. [Fold-based aggregation](#Fold-based-aggregation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    9. [Dispatcher routing toolkit](#Dispatcher-routing-toolkit)
-      - [x] discuss
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    10. [Configuration](#Configuration)
-      - [x] edit
-      - [ ] agree
-      - [ ] complete
    11. [Documentation](#Documentation)
-      - [x] edit
-      - [ ] agree
-      - [ ] complete
 4. [Integration and implementation in the node](#Integration-and-implementation-in-the-node)
    1. [Overall tracing setup](#Overall-tracing-setup)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    2. [Trace-outs](#Trace-outs)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    3. [Explicit trace filtering](#Explicit-trace-filtering)
-       - [x] edit
-       - [x] agree
-       - [ ] complete
    4. [Confidentiality and privacy filtering implementation](#Confidentiality-and-privacy-filtering-implementation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
    5. [Documentation generation](#Documentation-generation)
-      - [x] edit
-      - [x] agree
-      - [ ] complete
 5. [Appendix](#Appendix)
    1. [Decisions](#Decisions)
    2. [Future work](#Future-work)
@@ -122,7 +56,7 @@ To do list:
 * [x] [Decide namespace-aware configuration](#Decide-namespace-aware-configuration)
 * [ ] [Discuss impact of missing documentation entries](#Discuss-impact-of-missing-documentation-entries)
 * [x] [Decide missing configuration](#Decide-missing-configuration)
-* [ ] [Decide complete configuration](#Decide-complete-configuration)
+* [x] [Decide complete configuration](#Decide-complete-configuration)
 * [ ] [Discuss possibility of pure, thread-safe aggregation](#Discuss-possibility-of-pure-thread-safe-aggregation)
 * [ ] [Decide trace-outs types](#Decide-trace-outs-types)
 * [ ] Agree on editing.
@@ -533,31 +467,71 @@ configureTracers :: Monad m => TraceConfig -> Documented a -> [Trace m a]-> m ()
 These are the options that can be configured based on a namespace:
 
 ```haskell
-data ConfigOption = ConfigOption
-{   -- | Severity level
-    coSeverity     :: SeverityF
-    -- | Detail level
-  , coDetailLevel  :: DetailLevel
-}
+data ConfigOption =
+    -- | Severity level for filtering (default is WarningF)
+    CoSeverity SeverityF
+    -- | Detail level of message representation (Default is DRegular)
+  | CoDetail DetailLevel
+  -- | To which backend to pass
+  -- Default is [EKGBackend, Forwarder, Stdout HumanFormatColoured]
+  | CoBackend [BackendConfig]
+  -- | Construct a limiter with name (Text) and limiting to the Double,
+  -- which represents frequency in number of messages per second
+  | CoLimiter Text Double
 
-data TraceConfiguration = TraceConfiguration {
-  ,  tcOptions :: Map Namespace ConfigOption
-  , ...
+data BackendConfig =
+    Forwarder
+  | Stdout FormatLogging
+  | EKGBackend  
+
+data TraceConfig = TraceConfig {
+     -- | Options specific to a certain namespace
+    tcOptions            :: Map.Map Namespace [ConfigOption]
+     -- | Options for trace-forwarder    
+  , tcForwarder          :: RemoteAddr
+  , tcForwarderQueueSize :: Int
 }
 ```
 
-More configuration options e.g. for different transformers and __trace-outs__ can be added by this mechanism.
+If the configuration file is in Yaml format, the following entry means, that by default
+all messages with Info or higher Priority or higher are shown:
 
-### Decide complete configuration
-
-We still need to fully decide on the complete configuration format.
-
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
 ```
-  "StdoutOutputs": []                      -- valid
-  "StdoutOutputs": ["Human"]               -- valid
-  "StdoutOutputs": ["Machine"]             -- valid
-  "StdoutOutputs": ["Human", "Machine"]    -- ERROR!
-  "ForwarderOutputs": ["Human", "Machine"] -- any combination is valid
+
+But if you want to see Debug messages of the ChainDB tracer, then add:
+
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
+  - ns: Node.ChainDB
+    severity: DebugF
+```
+
+And if you never want to see any message of the AcceptPolicy tracer, then add:
+
+```yaml
+TraceOptionSeverity:
+  - ns: ''
+    severity: InfoF
+  - ns: Node.ChainDB
+    severity: DebugF    
+  - ns: Node.AcceptPolicy
+    severity: SilentF    
+```
+
+As another example, if you don't want to see more then 1 BlockFetchClient
+message per second, then add this to your configuration file:
+
+```yaml
+TraceOptionLimiter:
+  - ns: Node.BlockFetchClient
+    limiterName: BlockFetchLimiter
+    limiterFrequency: 1.0   
 ```
 
 ## Documentation
