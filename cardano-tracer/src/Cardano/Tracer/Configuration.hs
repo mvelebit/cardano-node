@@ -12,6 +12,7 @@ module Cardano.Tracer.Configuration
   , LogMode (..)
   , LogFormat (..)
   , LoggingParams (..)
+  , ConnectMode (..)
   , TracerConfig (..)
   , readTracerConfig
   ) where
@@ -53,8 +54,18 @@ data LoggingParams = LoggingParams
   , logFormat :: !LogFormat
   } deriving (Eq, Generic, FromJSON, Show, ToJSON)
 
+-- | 'cardano-tracer' can be both an initiator and a responder, from
+--   networking point of view:
+--   1. In 'Initiator' mode it tries to establish the connection with the node.
+--   2. In 'Responder' mode it accepts the conection from the node.
+data ConnectMode
+  = Initiator
+  | Responder
+  deriving (Eq, Generic, FromJSON, Show, ToJSON)
+
 data TracerConfig = TracerConfig
-  { acceptAt       :: !Address
+  { connectMode    :: !ConnectMode
+  , acceptAt       :: !Address
   , loRequestNum   :: !Word16 -- ^ How many 'TraceObject's in one request.
   , ekgRequestFreq :: !Pico   -- ^ How often to request EKG-metrics.
   , hasEKG         :: !(Maybe Endpoint)

@@ -8,7 +8,6 @@ module Cardano.Tracer.Test.Logs.Rotator
   ) where
 
 import           Control.Concurrent (forkIO, killThread, threadDelay)
-import           Data.Word (Word16)
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
 import           System.Directory
@@ -66,7 +65,8 @@ propRotator localSockName = ioProperty $ do
     False -> false "root dir doesn't exist"
  where
   config rootDir' localSock' = TracerConfig
-    { acceptAt       = LocalSocket localSock'
+    { connectMode    = Initiator
+    , acceptAt       = LocalSocket localSock'
     , loRequestNum   = 1
     , ekgRequestFreq = 1.0
     , hasEKG         = Nothing

@@ -9,7 +9,6 @@ module Cardano.Tracer.Test.Logs.File
 
 import           Control.Concurrent (forkIO, killThread, threadDelay)
 import           Control.Monad (filterM)
-import           Data.Word (Word16)
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
 import           System.Directory
@@ -81,7 +80,8 @@ propFile format suffix localSockName = ioProperty $ do
     False -> false "root dir doesn't exist"
  where
   config rootDir' localSock' = TracerConfig
-    { acceptAt       = LocalSocket localSock'
+    { connectMode    = Initiator
+    , acceptAt       = LocalSocket localSock'
     , loRequestNum   = 1
     , ekgRequestFreq = 1.0
     , hasEKG         = Nothing

@@ -34,8 +34,9 @@ import           Ouroboros.Network.IOManager (withIOManager)
 import           Ouroboros.Network.Snocket (Snocket, localAddressFromPath, localSnocket)
 import           Ouroboros.Network.Socket (AcceptedConnectionsLimit (..), ConnectionId (..),
                                            SomeResponderApplication (..),
-                                           cleanNetworkMutableState, newNetworkMutableState,
-                                           nullNetworkServerTracers, withServerNode)
+                                           cleanNetworkMutableState, connectToNode,
+                                           newNetworkMutableState, nullNetworkServerTracers,
+                                           nullNetworkConnectTracers, withServerNode)
 import           Ouroboros.Network.Protocol.Handshake.Codec (cborTermVersionDataCodec,
                                                              noTimeLimitsHandshake)
 import           Ouroboros.Network.Protocol.Handshake.Unversioned (UnversionedProtocol (..),
@@ -51,11 +52,11 @@ import           Cardano.Logging (TraceObject)
 
 import qualified Trace.Forward.Configuration as TF
 import qualified Trace.Forward.Protocol.Type as TF
-import           Trace.Forward.Network.Acceptor (acceptTraceObjects)
+import           Trace.Forward.Network.Acceptor (acceptTraceObjects, acceptTraceObjectsInit)
 
 import qualified System.Metrics.Configuration as EKGF
 import qualified System.Metrics.ReqResp as EKGF
-import           System.Metrics.Network.Acceptor (acceptEKGMetrics)
+import           System.Metrics.Network.Acceptor (acceptEKGMetrics, acceptEKGMetricsInit)
 
 import           Cardano.Tracer.Configuration
 import           Cardano.Tracer.Types (AcceptedItems, TraceObjects, Metrics,
@@ -76,7 +77,7 @@ runAcceptors config@TracerConfig{..} acceptedItems = do
 
   let configs = mkAcceptorsConfigs config stopEKG stopTF
 
-  try (runAcceptors' acceptAt configs tidVar acceptedItems) >>= \case
+  try (runAcceptors' connectMode acceptAt configs tidVar acceptedItems) >>= \case
     Left (e :: SomeException) -> do
       -- There is some problem (probably the connection was dropped).
       putStrLn $ "cardano-tracer, runAcceptors problem: " <> show e
@@ -120,31 +121,83 @@ mkAcceptorsConfigs TracerConfig{..} stopEKG stopTF = (ekgConfig, tfConfig)
   forEKGF (LocalSocket p) = EKGF.LocalPipe p
 
 runAcceptors'
-  :: Address
+  :: ConnectMode
+  -> Address
   -> (EKGF.AcceptorConfiguration, TF.AcceptorConfiguration TraceObject)
   -> TVar ThreadId
   -> AcceptedItems
   -> IO ()
-runAcceptors' (LocalSocket localSock) configs tidVar acceptedItems = withIOManager $ \iocp -> do
+runAcceptors' mode (LocalSocket localSock) (ekgConfig, tfConfig) tidVar acceptedItems = withIOManager $ \iocp -> do
   let snock = localSnocket iocp localSock
       addr  = localAddressFromPath localSock
-  doListenToForwarder snock addr noTimeLimitsHandshake configs tidVar acceptedItems  
+  case mode of
+    Initiator ->
+      doConnectToAcceptor snock addr noTimeLimitsHandshake tidVar acceptedItems $
+        appInitiator
+          [ (runEKGAcceptorInit          ekgConfig acceptedItems, 1)
+          , (runTraceObjectsAcceptorInit tfConfig  acceptedItems, 2)
+          ]
+    Responder ->
+      doListenToForwarder snock addr noTimeLimitsHandshake tidVar acceptedItems $
+        appResponder
+          [ (runEKGAcceptor          ekgConfig acceptedItems, 1)
+          , (runTraceObjectsAcceptor tfConfig  acceptedItems, 2)
+          ]
+ where
+  appResponder protocols =
+    OuroborosApplication $ \connectionId _shouldStopSTM ->
+      [ MiniProtocol
+         { miniProtocolNum    = MiniProtocolNum num
+         , miniProtocolLimits = MiniProtocolLimits { maximumIngressQueue = maxBound }
+         , miniProtocolRun    = protocol connectionId
+         }
+      | (protocol, num) <- protocols
+      ]
+
+  appInitiator protocols =
+    OuroborosApplication $ \connectionId _shouldStopSTM ->
+      [ MiniProtocol
+         { miniProtocolNum    = MiniProtocolNum num
+         , miniProtocolLimits = MiniProtocolLimits { maximumIngressQueue = maxBound }
+         , miniProtocolRun    = protocol connectionId
+         }
+      | (protocol, num) <- protocols
+      ]
+
+doConnectToAcceptor
+  :: (Ord addr, Show addr)
+  => Snocket IO fd addr
+  -> addr
+  -> ProtocolTimeLimits (Handshake UnversionedProtocol Term)
+  -> TVar ThreadId
+  -> AcceptedItems
+  -> OuroborosApplication 'InitiatorMode addr LBS.ByteString IO () Void
+  -> IO ()
+doConnectToAcceptor snocket address timeLimits tidVar acceptedItems app =
+  connectToNode
+    snocket
+    unversionedHandshakeCodec
+    timeLimits
+    (cborTermVersionDataCodec unversionedProtocolDataCodec)
+    nullNetworkConnectTracers
+    acceptableVersion
+    (simpleSingletonVersions
+       UnversionedProtocol
+       UnversionedProtocolData app
+    )
+    Nothing
+    address
 
 doListenToForwarder
   :: (Ord addr, Show addr)
   => Snocket IO fd addr
   -> addr
   -> ProtocolTimeLimits (Handshake UnversionedProtocol Term)
-  -> (EKGF.AcceptorConfiguration, TF.AcceptorConfiguration TraceObject)
   -> TVar ThreadId
   -> AcceptedItems
+  -> OuroborosApplication 'ResponderMode addr LBS.ByteString IO Void ()
   -> IO ()
-doListenToForwarder snocket
-                    address
-                    timeLimits
-                    (ekgConfig, tfConfig)
-                    tidVar
-                    acceptedItems = do
+doListenToForwarder snocket address timeLimits tidVar acceptedItems app = do
   networkState <- newNetworkMutableState
   nsAsync <- async $ cleanNetworkMutableState networkState
   clAsync <- async . void $
@@ -161,11 +214,7 @@ doListenToForwarder snocket
       (simpleSingletonVersions
         UnversionedProtocol
         UnversionedProtocolData
-        (SomeResponderApplication $ acceptorApp
-          [ (runEKGAcceptor        ekgConfig acceptedItems, 1)
-          , (runTraceObjectsAcceptor tfConfig  acceptedItems, 2)
-          ]
-        )
+        (SomeResponderApplication app)
       )
       nullErrorPolicies
       $ \_ serverAsync -> do
@@ -173,16 +222,6 @@ doListenToForwarder snocket
         atomically $ modifyTVar' tidVar $ const (asyncThreadId serverAsync)
         wait serverAsync -- Block until async exception.
   void $ waitAnyCancel [nsAsync, clAsync]
- where
-  acceptorApp protocols =
-    OuroborosApplication $ \connectionId _shouldStopSTM ->
-      [ MiniProtocol
-         { miniProtocolNum    = MiniProtocolNum num
-         , miniProtocolLimits = MiniProtocolLimits { maximumIngressQueue = maxBound }
-         , miniProtocolRun    = protocol connectionId
-         }
-      | (protocol, num) <- protocols
-      ]
 
 runEKGAcceptor
   :: Show addr
@@ -205,6 +244,28 @@ runTraceObjectsAcceptor tfConfig acceptedItems connId = do
   let (niStore, trObQueue, _) =
         unsafePerformIO $ prepareStores acceptedItems connId
   acceptTraceObjects tfConfig trObQueue niStore
+
+runEKGAcceptorInit
+  :: Show addr
+  => EKGF.AcceptorConfiguration
+  -> AcceptedItems
+  -> ConnectionId addr
+  -> RunMiniProtocol 'InitiatorMode LBS.ByteString IO () Void
+runEKGAcceptorInit ekgConfig acceptedItems connId = do
+  let (_, _, (ekgStore, localStore)) =
+        unsafePerformIO $ prepareStores acceptedItems connId
+  acceptEKGMetricsInit ekgConfig ekgStore localStore
+
+runTraceObjectsAcceptorInit
+  :: Show addr
+  => TF.AcceptorConfiguration TraceObject
+  -> AcceptedItems
+  -> ConnectionId addr
+  -> RunMiniProtocol 'InitiatorMode LBS.ByteString IO () Void
+runTraceObjectsAcceptorInit tfConfig acceptedItems connId = do
+  let (niStore, trObQueue, _) =
+        unsafePerformIO $ prepareStores acceptedItems connId
+  acceptTraceObjectsInit tfConfig trObQueue niStore
 
 prepareStores
   :: Show addr
