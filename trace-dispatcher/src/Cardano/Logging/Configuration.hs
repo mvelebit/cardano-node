@@ -259,15 +259,15 @@ readConfiguration fp =
     either throwIO pure =<< parseRepresentation <$> BS.readFile fp
 
 parseRepresentation :: ByteString -> Either ParseException TraceConfig
-parseRepresentation bs = fill (decodeEither' bs)
+parseRepresentation bs = transform (decodeEither' bs)
   where
-    fill ::
+    transform ::
          Either ParseException ConfigRepresentation
       -> Either ParseException TraceConfig
-    fill (Left e)   = Left e
-    fill (Right rl) = Right $ fill' emptyTraceConfig rl
-    fill' :: TraceConfig -> ConfigRepresentation -> TraceConfig
-    fill' (TraceConfig tc _fc _fcc) cr =
+    transform (Left e)   = Left e
+    transform (Right rl) = Right $ transform' emptyTraceConfig rl
+    transform' :: TraceConfig -> ConfigRepresentation -> TraceConfig
+    transform' (TraceConfig tc _fc _fcc) cr =
       let tc'  = foldl' (\ tci (TraceOptionSeverity ns severity') ->
                           let ns' = split (=='.') ns
                               ns'' = if ns' == [""] then [] else ns'

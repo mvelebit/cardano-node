@@ -1,0 +1,141 @@
+{-# LANGUAGE GADTs #-}
+{-# OPTIONS_GHC -Wno-deprecations  #-}
+
+module Cardano.TraceDispatcher.BasicInfo.Combinators
+  (
+    getBasicInfo
+  , severityBasicInfo
+  , namesForBasicInfo
+  , docBasicInfo
+  ) where
+
+import           Cardano.Config.Git.Rev (gitRev)
+import           Cardano.Logging
+import           Cardano.Prelude hiding (trace)
+import           Paths_cardano_node (version)
+
+import           Data.Text (pack)
+import           Data.Time (getCurrentTime)
+import           Data.Version (showVersion)
+
+import           Cardano.Api.Protocol.Types (BlockType (..), protocolInfo)
+import qualified Cardano.Chain.Genesis as Gen
+import           Cardano.Node.Configuration.POM (NodeConfiguration, ncProtocol)
+import           Cardano.Node.Protocol (SomeConsensusProtocol (..))
+import           Cardano.Node.Types (protocolName)
+import           Cardano.Slotting.Slot (EpochSize (..))
+import           Cardano.TraceDispatcher.BasicInfo.Types
+
+import qualified Ouroboros.Consensus.BlockchainTime.WallClock.Types as WCT
+import           Ouroboros.Consensus.Byron.Ledger.Conversions
+                     (fromByronEpochSlots, fromByronSlotLength,
+                     genesisSlotLength)
+import           Ouroboros.Consensus.Cardano.Block (HardForkLedgerConfig (..))
+import           Ouroboros.Consensus.Cardano.CanHardFork
+                     (ByronPartialLedgerConfig (..),
+                     ShelleyPartialLedgerConfig (..))
+import qualified Ouroboros.Consensus.Config as Consensus
+import           Ouroboros.Consensus.Config.SupportsNode
+                     (ConfigSupportsNode (..))
+import           Ouroboros.Consensus.HardFork.Combinator.Degenerate
+                     (HardForkLedgerConfig (..))
+import           Ouroboros.Consensus.Node.ProtocolInfo (ProtocolInfo (..))
+import           Ouroboros.Consensus.Shelley.Ledger.Ledger
+                     (shelleyLedgerGenesis)
+
+import qualified Shelley.Spec.Ledger.API as SL
+
+severityBasicInfo :: BasicInfo -> SeverityS
+severityBasicInfo _ = Notice
+
+namesForBasicInfo :: BasicInfo -> [Text]
+namesForBasicInfo BICommon {}  = ["BasicInfo","Common"]
+namesForBasicInfo BIShelley {} = ["BasicInfo","ShelleyBased"]
+namesForBasicInfo BIByron {}   = ["BasicInfo","Byron"]
+namesForBasicInfo BINetwork {} = ["BasicInfo","Network"]
+
+protoBasicInfoCommon :: BasicInfoCommon
+protoBasicInfoCommon = undefined
+
+protoBasicInfoShelley :: BasicInfoShelleyBased
+protoBasicInfoShelley = undefined
+
+protoBasicInfoByron :: BasicInfoByron
+protoBasicInfoByron = undefined
+
+protoBasicInfoNetwork :: BasicInfoNetwork
+protoBasicInfoNetwork = undefined
+
+docBasicInfo :: Documented BasicInfo
+docBasicInfo = Documented [
+    DocMsg
+      (BICommon protoBasicInfoCommon)
+      []
+      "TODO JNF"
+  , DocMsg
+      (BIShelley protoBasicInfoShelley)
+      []
+      "TODO JNF"
+  , DocMsg
+      (BIByron protoBasicInfoByron)
+      []
+      "TODO JNF"
+  , DocMsg
+      (BINetwork protoBasicInfoNetwork)
+      []
+      "TODO JNF"
+  ]
+
+getBasicInfo ::
+     NodeConfiguration
+  -> SomeConsensusProtocol
+  -> FilePath
+  -> IO [BasicInfo]
+getBasicInfo nc (SomeConsensusProtocol whichP pForInfo) fp = do
+  nodeStartTime <- getCurrentTime
+  let cfg = pInfoConfig $ protocolInfo pForInfo
+      basicInfoCommon = BICommon $ BasicInfoCommon {
+                biProtocol = pack . protocolName $ ncProtocol nc
+              , biVersion  = pack . showVersion $ version
+              , biCommit   = gitRev
+              , biNodeStartTime = nodeStartTime
+              , biConfigPath = fp
+              , biNetworkMagic = getNetworkMagic $ Consensus.configBlock cfg
+              }
+      protocolDependentItems =
+        case whichP of
+          ByronBlockType ->
+            let DegenLedgerConfig cfgByron = Consensus.configLedger cfg
+            in [getGenesisValuesByron cfg cfgByron]
+          ShelleyBlockType ->
+            let DegenLedgerConfig cfgShelley = Consensus.configLedger cfg
+            in [getGenesisValues "Shelley" cfgShelley]
+          CardanoBlockType ->
+            let CardanoLedgerConfig cfgByron cfgShelley cfgAllegra cfgMary cfgAlonzo = Consensus.configLedger cfg
+            in getGenesisValuesByron cfg cfgByron
+               : getGenesisValues "Shelley" cfgShelley
+               : getGenesisValues "Allegra" cfgAllegra
+               : getGenesisValues "Mary"    cfgMary
+               : [getGenesisValues "Alonzo"  cfgAlonzo]
+  pure (basicInfoCommon : protocolDependentItems)
+    where
+      getGenesisValues era config =
+        let genesis = shelleyLedgerGenesis $ shelleyLedgerConfig config
+        in BIShelley $ BasicInfoShelleyBased {
+            bisEra               = era
+          , bisSystemStartTime   = SL.sgSystemStart genesis
+          , bisSlotLength        = WCT.getSlotLength . WCT.mkSlotLength
+                                      $ SL.sgSlotLength genesis
+          , bisEpochLength       = unEpochSize . SL.sgEpochLength $ genesis
+          , bisSlotsPerKESPeriod = SL.sgSlotsPerKESPeriod genesis
+        }
+      getGenesisValuesByron cfg config =
+        let genesis = byronLedgerConfig config
+        in BIByron $ BasicInfoByron {
+            bibSystemStartTime = WCT.getSystemStart . getSystemStart
+                                  $ Consensus.configBlock cfg
+          , bibSlotLength      = WCT.getSlotLength . fromByronSlotLength
+                                  $ genesisSlotLength genesis
+          , bibEpochLength     = unEpochSize . fromByronEpochSlots
+                                  $ Gen.configEpochSlots genesis
+          }

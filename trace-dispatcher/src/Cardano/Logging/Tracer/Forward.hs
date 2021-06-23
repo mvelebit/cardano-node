@@ -89,7 +89,7 @@ forwardTracer :: forall m. (MonadIO m)
   -> m (Trace m FormattedMessage)
 forwardTracer config = do
     tbQueue <- liftIO $ newTBQueueIO
-                          (fromIntegral (tcForwarderCacheSize config))
+                          (fromIntegral (tcForwarderQueueSize config))
     store <- liftIO $ EKG.newStore
     liftIO $ EKG.registerGcMetrics store
     liftIO $ launchForwardersSimple (tcForwarder config) tbQueue store

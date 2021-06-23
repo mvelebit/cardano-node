@@ -65,8 +65,6 @@ import           Cardano.BM.Stats.Resources
 import qualified Cardano.BM.Trace as Trace
 import           Cardano.BM.Tracing
 
-import qualified Cardano.Logging as NL
-
 import qualified Cardano.Chain.Genesis as Gen
 import qualified Ouroboros.Consensus.BlockchainTime.WallClock.Types as WCT
 import           Ouroboros.Consensus.Byron.Ledger.Conversions
@@ -159,9 +157,8 @@ createLoggingLayer
   -> Text
   -> NodeConfiguration
   -> SomeConsensusProtocol
-  -> NL.Trace IO NL.FormattedMessage
   -> ExceptT ConfigError IO LoggingLayer
-createLoggingLayer topt ver nodeConfig' p _ntrace = do
+createLoggingLayer topt ver nodeConfig' p = do
   logConfig <- loggingCLIConfiguration $
     if ncLoggingSwitch nodeConfig'
     -- Re-interpret node config again, as logging 'Configuration':

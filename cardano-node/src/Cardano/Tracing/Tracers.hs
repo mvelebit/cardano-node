@@ -45,6 +45,7 @@ import qualified Network.Socket as Socket (SockAddr)
 
 import "contra-tracer" Control.Tracer
 import           Control.Tracer.Transformers
+import           Cardano.TraceDispatcher.BasicInfo.Types (BasicInfo)
 
 import           Cardano.Slotting.Slot (EpochNo (..), SlotNo (..))
 
@@ -141,6 +142,7 @@ data Tracers peer localPeer blk = Tracers
   , handshakeTracer :: Tracer IO NtN.HandshakeTr
   , localHandshakeTracer :: Tracer IO NtC.HandshakeTr
   , diffusionInitializationTracer :: Tracer IO ND.DiffusionInitializationTracer
+  , basicInfoTracer :: Tracer IO BasicInfo
   }
 
 data ForgeTracers = ForgeTracers
@@ -175,6 +177,7 @@ nullTracers = Tracers
   , handshakeTracer = nullTracer
   , localHandshakeTracer = nullTracer
   , diffusionInitializationTracer = nullTracer
+  , basicInfoTracer = nullTracer
   }
 
 
@@ -318,6 +321,7 @@ mkTracers blockConfig tOpts@(TracingOn trSel) tr nodeKern ekgDirect = do
     , handshakeTracer = tracerOnOff (traceHandshake trSel) verb "Handshake" tr
     , localHandshakeTracer = tracerOnOff (traceLocalHandshake trSel) verb "LocalHandshake" tr
     , diffusionInitializationTracer = tracerOnOff (traceDiffusionInitialization trSel) verb "DiffusionInitializationTracer" tr
+    , basicInfoTracer = nullTracer
     }
  where
    verb :: TracingVerbosity
@@ -367,6 +371,7 @@ mkTracers _ _ _ _ _ =
     , handshakeTracer = nullTracer
     , localHandshakeTracer = nullTracer
     , diffusionInitializationTracer = nullTracer
+    , basicInfoTracer = nullTracer
     }
 
 --------------------------------------------------------------------------------

@@ -25,6 +25,8 @@ import qualified Network.Socket as Socket
 
 import           Cardano.Logging
 import           Cardano.Prelude hiding (trace)
+import           Cardano.TraceDispatcher.BasicInfo.Combinators
+import           Cardano.TraceDispatcher.BasicInfo.Types (BasicInfo)
 import           Cardano.TraceDispatcher.ChainDB.Combinators
 import           Cardano.TraceDispatcher.ChainDB.Docu
 import           Cardano.TraceDispatcher.Consensus.Combinators
@@ -32,11 +34,11 @@ import           Cardano.TraceDispatcher.Consensus.Docu
 import           Cardano.TraceDispatcher.Consensus.StateInfo
 import           Cardano.TraceDispatcher.Era.ConvertTxId
 import           Cardano.TraceDispatcher.Formatting ()
-import           Cardano.TraceDispatcher.Metrics (docResourceStats,
-                     startResourceTracer)
 import           Cardano.TraceDispatcher.Network.Combinators
 import           Cardano.TraceDispatcher.Network.Docu
 import           Cardano.TraceDispatcher.Network.Formatting ()
+import           Cardano.TraceDispatcher.Resources (docResourceStats,
+                     startResourceTracer)
 import qualified "trace-dispatcher" Control.Tracer as NT
 
 
@@ -230,9 +232,10 @@ mkDispatchTracers
   -> Trace IO FormattedMessage
   -> Maybe (Trace IO FormattedMessage)
   -> TraceConfig
+  -> [BasicInfo]
   -> IO (Tracers peer localPeer blk)
 mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
-  trBase trForward mbTrEKG trConfig = do
+  trBase trForward mbTrEKG trConfig basicInfos = do
     trace ("TraceConfig " <> show trConfig) $ pure ()
     cdbmTr <- mkCardanoTracer
                 "ChainDB"
@@ -450,6 +453,12 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
                 (\ _ -> Info)
                 allPublic
                 trBase trForward mbTrEKG
+    biTr   <- mkCardanoTracer
+                "BasicInfo"
+                namesForBasicInfo
+                severityBasicInfo
+                allPublic
+                trBase trForward mbTrEKG
 
     configureTracers trConfig docChainDBTraceEvent    [cdbmTr]
     configureTracers trConfig docChainSyncClientEvent [cscTr]
@@ -486,6 +495,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
     configureTracers trConfig docLocalHandshake       [lhsTr]
     configureTracers trConfig docDiffusionInit        [diTr]
     configureTracers trConfig docResourceStats        [rsTr]
+    configureTracers trConfig docBasicInfo            [biTr]
 
 -- -- TODO JNF Code for debugging frequency limiting
 --     void . forkIO $
@@ -496,6 +506,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
 --           (ChainDB.OpenedDB (Point Origin) (Point Origin)))
 -- -- End of  debugging code
 
+    mapM_ (traceWith biTr) basicInfos
     startResourceTracer rsTr
 
     pure Tracers
@@ -541,9 +552,10 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
       , handshakeTracer = Tracer (traceWith hsTr)
       , localHandshakeTracer = Tracer (traceWith lhsTr)
       , diffusionInitializationTracer = Tracer (traceWith diTr)
+      , basicInfoTracer = Tracer (traceWith biTr)
     }
 
-mkDispatchTracers blockConfig tOpts tr nodeKern ekgDirect _ _ _ _ =
+mkDispatchTracers blockConfig tOpts tr nodeKern ekgDirect _ _ _ _ _ =
   mkTracers blockConfig tOpts tr nodeKern ekgDirect
 
 -- -- TODO JNF Code for debugging frequency limiting

@@ -45,7 +45,7 @@ config1 = TraceConfig {
           (["tracer2"], [CoSeverity CriticalF]),
           (["tracer2","bubble"], [CoSeverity InfoF])]
     , tcForwarder = LocalSocket "forwarder.log"
-    , tcForwarderCacheSize = 100
+    , tcForwarderQueueSize = 100
     }
 
 config2 :: TraceConfig
@@ -54,7 +54,7 @@ config2 = TraceConfig {
           (["tracer2"], [CoSeverity WarningF]),
           (["tracer2","bubble"], [CoSeverity WarningF])]
     , tcForwarder = LocalSocket "forwarder.log"
-    , tcForwarderCacheSize = 100
+    , tcForwarderQueueSize = 100
     }
 
 testConfig' :: MonadIO m => TraceConfig -> Trace m TestMessage -> Trace m TestMessage -> m ()

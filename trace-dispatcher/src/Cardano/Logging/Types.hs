@@ -232,12 +232,13 @@ data FormatLogging = HumanFormatColoured | HumanFormatUncoloured | MachineFormat
 data ConfigOption =
     -- | Severity level for a filter (default is WarningF)
     CoSeverity SeverityF
-    -- | Detail level (Default is DRegular)
+    -- | Detail level (default is DRegular)
   | CoDetail DetailLevel
-  -- | To which backend to pass (Default is BothBackends)
+  -- | To which backend to pass
+  --   Default is [EKGBackend, Forwarder, Stdout HumanFormatColoured]
   | CoBackend [BackendConfig]
-  -- | Construct a limiter with name (Text) and limiting to Double
-  -- number of messages per second
+  -- | Construct a limiter with name (Text) and limiting to the Double,
+  -- which represents frequency in number of messages per second
   | CoLimiter Text Double
   deriving (Eq, Ord, Show)
 
@@ -252,7 +253,7 @@ data TraceConfig = TraceConfig {
      -- | Options specific to a certain namespace
     tcOptions            :: Map.Map Namespace [ConfigOption]
   , tcForwarder          :: RemoteAddr
-  , tcForwarderCacheSize :: Int
+  , tcForwarderQueueSize :: Int
 }
   deriving (Eq, Ord, Show)
 
@@ -260,7 +261,7 @@ emptyTraceConfig :: TraceConfig
 emptyTraceConfig = TraceConfig {
     tcOptions = Map.empty
   , tcForwarder = LocalSocket "forwarder.log"
-  , tcForwarderCacheSize = 1500
+  , tcForwarderQueueSize = 1500
   }
 
 -- | When configuring a net of tracers, it should be run with Config on all
