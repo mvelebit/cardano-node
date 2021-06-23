@@ -226,8 +226,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/ekg-forward
-  tag: aa2315f2684e043ff4e970b65cbac1a8be7c2016
-  --sha256: 1dp9m4llkg8dplb0yhskgfvc271s9pzn7kd860px1qjhqqxmvz9i
+  tag: 6543d1710c4135ac1fca8d44147bd892f81ae31c
+  --sha256: 0x78i1q4q7lm1riy3z47wvgp3dn89rg1mz3zxwgmsxa7dw8a4mxq
 
 constraints:
     hedgehog >= 1.0

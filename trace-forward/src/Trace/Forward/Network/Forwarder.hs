@@ -5,6 +5,7 @@ module Trace.Forward.Network.Forwarder
   ( connectToAcceptor
   -- | Export this function for Mux purpose.
   , forwardTraceObjects
+  , forwardTraceObjectsResp
   ) where
 
 import           Codec.CBOR.Term (Term)
@@ -99,6 +100,38 @@ forwardTraceObjects
   -> RunMiniProtocol 'InitiatorMode LBS.ByteString IO () Void
 forwardTraceObjects config loQueue =
   InitiatorProtocolOnly $
+    MuxPeerRaw $ \channel -> do
+      cv <- newEmptyTMVarIO
+      siblingVar <- newTVarIO 2
+      (r, trailing) <-
+        runPeerWithLimits
+          (forwarderTracer config)
+          (Forwarder.codecTraceForward CBOR.encode CBOR.decode
+                                       CBOR.encode CBOR.decode
+                                       CBOR.encode CBOR.decode)
+          (byteLimitsTraceForward (fromIntegral . LBS.length))
+          timeLimitsTraceForward
+          channel
+          (Forwarder.traceForwarderPeer $ readItems config loQueue)
+      atomically $ putTMVar cv r
+      waitSibling siblingVar
+      return ((), trailing)
+ where
+  waitSibling :: StrictTVar IO Int -> IO ()
+  waitSibling cntVar = do
+    atomically $ modifyTVar cntVar (\a -> a - 1)
+    atomically $ do
+      cnt <- readTVar cntVar
+      unless (cnt == 0) retry
+
+forwardTraceObjectsResp
+  :: (CBOR.Serialise lo,
+      ShowProxy lo)
+  => ForwarderConfiguration lo
+  -> TBQueue lo
+  -> RunMiniProtocol 'ResponderMode LBS.ByteString IO Void ()
+forwardTraceObjectsResp config loQueue =
+  ResponderProtocolOnly $
     MuxPeerRaw $ \channel -> do
       cv <- newEmptyTMVarIO
       siblingVar <- newTVarIO 2

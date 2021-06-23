@@ -1,10 +1,12 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Trace.Forward.Network.Acceptor
   ( listenToForwarder
   -- | Export this function for Mux purpose.
   , acceptTraceObjects
+  , acceptTraceObjectsInit
   ) where
 
 import           Codec.CBOR.Term (Term)
@@ -18,6 +20,7 @@ import           Control.Monad.Class.MonadSTM.Strict (StrictTVar, atomically, mo
 import qualified Data.ByteString.Lazy as LBS
 import           Data.Functor ((<&>))
 import           Data.IORef (atomicModifyIORef', readIORef)
+import           Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import           Data.Typeable (Typeable)
 import           Data.Void (Void)
@@ -146,6 +149,41 @@ acceptTraceObjects config loQueue niStore =
       cnt <- readTVar cntVar
       unless (cnt == 0) retry
 
+acceptTraceObjectsInit
+  :: (CBOR.Serialise lo,
+      ShowProxy lo,
+      Typeable lo)
+  => AcceptorConfiguration lo
+  -> TBQueue lo
+  -> NodeInfoStore
+  -> RunMiniProtocol 'InitiatorMode LBS.ByteString IO () Void
+acceptTraceObjectsInit config loQueue niStore =
+  InitiatorProtocolOnly $
+    MuxPeerRaw $ \channel -> do
+      sv <- newEmptyTMVarIO
+      siblingVar <- newTVarIO 2
+      (r, trailing) <-
+        runPeerWithLimits
+          (acceptorTracer config)
+          (Acceptor.codecTraceForward CBOR.encode CBOR.decode
+                                      CBOR.encode CBOR.decode
+                                      CBOR.encode CBOR.decode)
+          (byteLimitsTraceForward (fromIntegral . LBS.length))
+          timeLimitsTraceForward
+          channel
+          (Acceptor.traceAcceptorPeer $
+            acceptorActions config loQueue niStore True False)
+      atomically $ putTMVar sv r
+      waitSibling siblingVar
+      return ((), trailing)
+ where
+  waitSibling :: StrictTVar IO Int -> IO ()
+  waitSibling cntVar = do
+    atomically $ modifyTVar cntVar (\a -> a - 1)
+    atomically $ do
+      cnt <- readTVar cntVar
+      unless (cnt == 0) retry
+
 acceptorActions
   :: (CBOR.Serialise lo,
       ShowProxy lo,
@@ -161,14 +199,30 @@ acceptorActions config@AcceptorConfiguration{..} loQueue niStore askForNI False 
   -- But request for node's info should be sent only once (in the beginning of session).
   if askForNI
     then
-      Acceptor.SendMsgNodeInfoRequest $ \reply -> do
-        atomicModifyIORef' niStore $ const (reply, ())
-        readIORef shouldWeStop <&> acceptorActions config loQueue niStore False
+      Acceptor.SendMsgNodeInfoRequest $ \reply ->
+        if niContainsAllWeNeed reply
+          then do
+            atomicModifyIORef' niStore $ const (reply, ())
+            readIORef shouldWeStop <&> acceptorActions config loQueue niStore False
+          else
+            -- The node didn't provide us all the info we need, stop the session with it.
+            return $ acceptorActions config loQueue niStore False True
     else
       Acceptor.SendMsgRequest TokBlocking whatToRequest $ \reply -> do
         writeTraceObjectsToQueue reply loQueue
         actionOnReply $ logObjectsFromReply reply
         readIORef shouldWeStop <&> acceptorActions config loQueue niStore False
+ where
+  niContainsAllWeNeed ni = length allWeNeed == length allWeHave
+   where
+     allWeNeed =
+       [ lookup "NodeName"      ni
+       , lookup "NodeProtocol"  ni
+       , lookup "NodeRelease"   ni
+       , lookup "NodeCommit"    ni
+       , lookup "NodeStartTime" ni
+       ]
+     allWeHave = catMaybes allWeNeed 
 
 acceptorActions AcceptorConfiguration{..} _ _ _ True =
   Acceptor.SendMsgDone

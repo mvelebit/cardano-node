@@ -17,6 +17,7 @@ module Cardano.Logging.Tracer.Forward
 import           Codec.CBOR.Term (Term)
 import           Codec.Serialise (Serialise (..))
 import           Control.Concurrent (forkIO)
+import           Control.Concurrent.Async (async, wait, waitAnyCancel)
 import           Control.Concurrent.STM.TBQueue (TBQueue, newTBQueueIO,
                      writeTBQueue)
 import           Control.Exception (SomeException, try)
@@ -33,6 +34,7 @@ import           Data.Void (Void)
 import           Data.Word (Word16)
 
 import           Ouroboros.Network.Driver.Limits (ProtocolTimeLimits)
+import           Ouroboros.Network.ErrorPolicy (nullErrorPolicies)
 import           Ouroboros.Network.IOManager (withIOManager)
 import           Ouroboros.Network.Mux (MiniProtocol (..),
                      MiniProtocolLimits (..), MiniProtocolNum (..),
@@ -49,15 +51,17 @@ import           Ouroboros.Network.Protocol.Handshake.Version
                      (acceptableVersion, simpleSingletonVersions)
 import           Ouroboros.Network.Snocket (Snocket, localAddressFromPath,
                      localSnocket)
-import           Ouroboros.Network.Socket (connectToNode,
-                     nullNetworkConnectTracers)
+import           Ouroboros.Network.Socket (AcceptedConnectionsLimit (..),
+                     SomeResponderApplication (..), cleanNetworkMutableState,
+                     newNetworkMutableState, nullNetworkServerTracers,
+                     withServerNode)
 import           Ouroboros.Network.Util.ShowProxy (ShowProxy (..))
 
 import qualified System.Metrics as EKG
 import qualified System.Metrics.Configuration as EKGF
-import           System.Metrics.Network.Forwarder (forwardEKGMetrics)
+import           System.Metrics.Network.Forwarder (forwardEKGMetricsResp)
 import qualified Trace.Forward.Configuration as TF
-import           Trace.Forward.Network.Forwarder (forwardTraceObjects)
+import           Trace.Forward.Network.Forwarder (forwardTraceObjectsResp)
 
 import           Cardano.Logging.DocuGenerator
 import           Cardano.Logging.Types
@@ -144,7 +148,13 @@ launchForwardersSimple endpoint tbQueue store =
     TF.ForwarderConfiguration
       { TF.forwarderTracer  = contramap show stdoutTracer
       , TF.acceptorEndpoint = forTF endpoint
-      , TF.nodeBasicInfo    = return []
+      , TF.nodeBasicInfo    = return
+                                [ ("NodeName",      "core-1")
+                                , ("NodeProtocol",  "Shelley")
+                                , ("NodeRelease",   "1.27.0")
+                                , ("NodeCommit",    "abcdefg")
+                                , ("NodeStartTime", "2021 06 04 14:34:07 UTC")
+                                ]
       , TF.actionOnRequest  = const (return ())
       }
 
@@ -160,40 +170,48 @@ launchForwarders'
 launchForwarders' (LocalSocket localSock) configs tbQueue store = withIOManager $ \iocp -> do
   let snocket = localSnocket iocp localSock
       address = localAddressFromPath localSock
-  doConnectToAcceptor snocket address noTimeLimitsHandshake configs tbQueue store
+  doListenToAcceptor snocket address noTimeLimitsHandshake configs tbQueue store
 
-doConnectToAcceptor
-  :: Snocket IO fd addr
+doListenToAcceptor
+  :: Ord addr
+  => Snocket IO fd addr
   -> addr
   -> ProtocolTimeLimits (Handshake UnversionedProtocol Term)
   -> (EKGF.ForwarderConfiguration, TF.ForwarderConfiguration TraceObject)
   -> TBQueue TraceObject
   -> EKG.Store
   -> IO ()
-doConnectToAcceptor snocket address timeLimits (ekgConfig, tfConfig) tbQueue store = do
-  -- If there is a network problem (unable to establish the connection
-  -- with the acceptor or the connection was broken), thrown exception
-  -- will be catched and this function will be re-called.
-  connectToNode
-    snocket
-    unversionedHandshakeCodec
-    timeLimits
-    (cborTermVersionDataCodec unversionedProtocolDataCodec)
-    nullNetworkConnectTracers
-    acceptableVersion
-    (simpleSingletonVersions
-       UnversionedProtocol
-       UnversionedProtocolData $
-         forwarderApp [ (forwardEKGMetrics ekgConfig store,    1)
-                      , (forwardTraceObjects tfConfig tbQueue, 2)
-                      ]
-    )
-    Nothing
-    address
+doListenToAcceptor snocket address timeLimits (ekgConfig, tfConfig) tbQueue store = do
+  networkState <- newNetworkMutableState
+  nsAsync <- async $ cleanNetworkMutableState networkState
+  clAsync <- async . void $
+    withServerNode
+      snocket
+      nullNetworkServerTracers
+      networkState
+      (AcceptedConnectionsLimit maxBound maxBound 0)
+      address
+      unversionedHandshakeCodec
+      timeLimits
+      (cborTermVersionDataCodec unversionedProtocolDataCodec)
+      acceptableVersion
+      (simpleSingletonVersions
+        UnversionedProtocol
+        UnversionedProtocolData
+        (SomeResponderApplication $
+          forwarderApp [ (forwardEKGMetricsResp   ekgConfig store,  1)
+                       , (forwardTraceObjectsResp tfConfig tbQueue, 2)
+                       ]
+        )
+      )
+      nullErrorPolicies
+      $ \_ serverAsync ->
+        wait serverAsync -- Block until async exception.
+  void $ waitAnyCancel [nsAsync, clAsync]
  where
   forwarderApp
-    :: [(RunMiniProtocol 'InitiatorMode LBS.ByteString IO () Void, Word16)]
-    -> OuroborosApplication 'InitiatorMode addr LBS.ByteString IO () Void
+    :: [(RunMiniProtocol 'ResponderMode LBS.ByteString IO Void (), Word16)]
+    -> OuroborosApplication 'ResponderMode addr LBS.ByteString IO Void ()
   forwarderApp protocols =
     OuroborosApplication $ \_connectionId _shouldStopSTM ->
       [ MiniProtocol

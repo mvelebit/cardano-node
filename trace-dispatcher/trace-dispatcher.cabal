@@ -34,6 +34,7 @@ library
   default-extensions: OverloadedStrings
   build-depends:      base >=4.12 && <5
                       , aeson
+                      , async
                       , bytestring
                       , cborg
                       , containers
