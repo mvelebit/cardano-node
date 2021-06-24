@@ -345,6 +345,7 @@ data BlockObservation
   , boChainDelta :: !Int -- ^ ChainDelta during adoption
   , boAnnounced  :: !(Maybe NominalDiffTime)
   , boSending    :: !(Maybe NominalDiffTime)
+  , boErrors     :: [BPError]
   }
   deriving (Generic, AE.FromJSON, AE.ToJSON, Show)
 
@@ -363,6 +364,7 @@ data BlockEvents
   , beAnnounced    :: !NominalDiffTime
   , beSending      :: !NominalDiffTime
   , beObservations :: [BlockObservation]
+  , beValidObservs :: [BlockObservation]
   , beOtherBlocks  :: [Hash]
   , beErrors       :: [BPError]
   }
@@ -375,7 +377,7 @@ instance RenderTimeline BlockEvents where
     , Field 5 0 "abs.slot"    "abs."  "slot#"  $ IWord64 (unSlotNo . beSlotNo)
     , Field 6 0 "hash"        "block" "hash"   $ IText   (shortHash . beBlock)
     , Field 6 0 "hashPrev"    "prev"  "hash"   $ IText   (shortHash . beBlockPrev)
-    , Field 5 0 "peer.observ" "valid" "obsrv"  $ IInt    (length . beObservations)
+    , Field 5 0 "valid.observ" "valid" "obsrv" $ IInt    (length . beValidObservs)
     , Field 5 0 "errors"      "all"   "errs"   $ IInt    (length . beErrors)
     , Field 5 0 "forks"       ""      "forks"  $ IInt    (count bpeIsFork . beErrors)
     , Field 5 0 "missAdopt"   (m!!0) "adopt"   $ IInt    (count (bpeIsMissing Adopt) . beErrors)
@@ -405,7 +407,7 @@ mapChainToPeerBlockObservationCDFs ::
   -> (BlockObservation -> Maybe NominalDiffTime)
   -> String
   -> (Distribution Float NominalDiffTime, Distribution Float NominalDiffTime)
-mapChainToPeerBlockObservationCDFs percs cbe proj desc =
+mapChainToPeerBlockObservationCDFs percs chainBlockEvents proj desc =
   (means, covs)
  where
    means, covs :: Distribution Float NominalDiffTime
@@ -418,10 +420,23 @@ mapChainToPeerBlockObservationCDFs percs cbe proj desc =
    allDistributions = computeDistribution percs <$> allObservations
 
    allObservations :: [[NominalDiffTime]]
-   allObservations = blockObservations <$> cbe
+   allObservations =
+     filter isValidBlockEvent chainBlockEvents
+     <&> blockObservations
 
    blockObservations :: BlockEvents -> [NominalDiffTime]
-   blockObservations be = mapMaybe proj (beObservations be)
+   blockObservations be = mapMaybe proj (beValidObservs be)
+
+isValidBlockEvent :: BlockEvents -> Bool
+isValidBlockEvent BlockEvents{..} = beChainDelta == 1
+
+isValidBlockObservation :: BlockObservation -> Bool
+isValidBlockObservation BlockObservation{..} =
+  -- 1. All phases are present
+  null boErrors
+  &&
+  -- 2. All timings account for processing of a single block
+  boChainDelta == 1
 
 blockProp :: ChainInfo -> [(JsonLogfile, [LogObject])] -> IO BlockPropagation
 blockProp ci xs = do
@@ -510,18 +525,8 @@ doBlockProp eventMaps = do
      , beChainDelta = bfeChainDelta
      , beAnnounced  = bfeAnnounced & handleMiss "Δt Announced (forger)"
      , beSending    = bfeSending   & handleMiss "Δt Sending (forger)"
-     , beObservations = catMaybes $
-       os <&> \ObserverEvents{..}->
-         BlockObservation
-           <$> Just boeHost
-           <*> Just bfeSlotStart
-           <*> boeNoticed
-           <*> boeRequested
-           <*> boeFetched
-           <*> Just boeAdopted
-           <*> Just boeChainDelta
-           <*> Just boeAnnounced
-           <*> Just boeSending
+     , beObservations = observs
+     , beValidObservs = observs & filter isValidBlockObservation
      , beOtherBlocks = otherBlocks
      , beErrors =
          errs
@@ -530,6 +535,20 @@ doBlockProp eventMaps = do
          <> concatMap boeErrs os
      }
     where
+      observs =
+        catMaybes $
+        os <&> \ObserverEvents{..}->
+          BlockObservation
+            <$> Just boeHost
+            <*> Just bfeSlotStart
+            <*> boeNoticed
+            <*> boeRequested
+            <*> boeFetched
+            <*> Just boeAdopted
+            <*> Just boeChainDelta
+            <*> Just boeAnnounced
+            <*> Just boeSending
+            <*> Just boeErrs
       otherBlocks = Map.lookup bfeBlockNo heightMap
                     & handleMiss "height map"
                     & Set.delete bfeBlock
@@ -680,34 +699,3 @@ collectEventErrors mbe phases =
   , let neg  = ((< 0) <$> proj) == Just True
   , miss || neg
   ]
-   -- deltaTStrict :: Phase -> UTCTime -> MachBlockEvents NominalDiffTime -> [Phase] -> Either (MachBlockEvents NominalDiffTime) ([BPError], NominalDiffTime)
-   -- deltaTStrict desc t mbe = deltaT desc t mbe . fmap Right
-
-   -- deltaT :: Phase -> UTCTime -> MachBlockEvents NominalDiffTime -> [Either Phase Phase] -> Either (MachBlockEvents NominalDiffTime) ([BPError], NominalDiffTime)
-   -- deltaT ph t mbe mdtProjs =
-   --   maybeReportNegativeDelta . fmap (t `diffUTCTime`) <$>
-   --     foldM (\(ers,tv) eiProjs@(join either id -> proj) ->
-   --               either
-   --                (Right .
-   --                 maybe (fail' block (ph `BPEBefore` proj):ers, 0)
-   --                       (ers,))
-   --                (maybe (Left $ fail block (ph `BPEBefore` proj))
-   --                       (Right . (ers,)))
-   --                (join bimap (($ mbe) . mbeGetProjection) eiProjs)
-   --              <&> fmap (flip addUTCTime tv))
-   --           ([], unSlotStart slStart)
-   --           mdtProjs
-   --  where
-   --    slStart = mbeSlotStart mbe
-   --    block   = mbeBlock mbe
-
-   --    maybeReportNegativeDelta
-   --      :: ([BPError], NominalDiffTime) -> ([BPError], NominalDiffTime)
-   --    maybeReportNegativeDelta v@(ers, d) =
-   --      if d >= 0 then v else
-   --      ((fail' block $
-   --        BPENegativeDelta
-   --          ph t slStart d
-   --          (join either (id &&& (fromMaybe 0 . ($ mbe) . mbeGetProjection))
-   --            <$> mdtProjs))
-   --        :ers, d)
