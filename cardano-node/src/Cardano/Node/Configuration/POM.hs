@@ -63,6 +63,22 @@ data NodeConfiguration
        , ncDiffusionMode    :: !DiffusionMode
        , ncSnapshotInterval :: !SnapshotInterval
 
+         -- | During the development and integration of new network protocols
+         -- (node-to-node and node-to-client) we wish to be able to test them
+         -- but not have everybody use them by default on the mainnet. Avoiding
+         -- enabling them by default makes it practical to include such
+         -- not-yet-ready protocol versions into released versions of the node
+         -- without the danger that node operators on the mainnet will start
+         -- using them prematurely, before the testing is complete.
+         --
+         -- The flag defaults to 'False'
+         --
+         -- This flag should be set to 'True' when testing the new protocol
+         -- versions.
+         --
+         -- TODO: Non P2P
+       , ncTestEnableDevelopmentNetworkProtocols :: !Bool
+
          -- BlockFetch configuration
        , ncMaxConcurrencyBulkSync :: !(Maybe MaxConcurrencyBulkSync)
        , ncMaxConcurrencyDeadline :: !(Maybe MaxConcurrencyDeadline)
@@ -116,6 +132,9 @@ data PartialNodeConfiguration
        , pncDiffusionMode    :: !(Last DiffusionMode)
        , pncSnapshotInterval :: !(Last SnapshotInterval)
 
+         -- TODO: Non P2P
+       , pncTestEnableDevelopmentNetworkProtocols :: !(Last Bool)
+
          -- BlockFetch configuration
        , pncMaxConcurrencyBulkSync :: !(Last MaxConcurrencyBulkSync)
        , pncMaxConcurrencyDeadline :: !(Last MaxConcurrencyDeadline)
@@ -158,6 +177,8 @@ instance FromJSON PartialNodeConfiguration where
         <- Last . fmap getDiffusionMode <$> v .:? "DiffusionMode"
       pncSnapshotInterval'
         <- Last . fmap RequestedSnapshotInterval <$> v .:? "SnapshotInterval"
+      pncTestEnableDevelopmentNetworkProtocols'
+        <- Last <$> v .:? "TestEnableDevelopmentNetworkProtocols"
 
       -- Blockfetch parameters
       pncMaxConcurrencyBulkSync' <- Last <$> v .:? "MaxConcurrencyBulkSync"
@@ -207,6 +228,8 @@ instance FromJSON PartialNodeConfiguration where
            , pncSocketPath = pncSocketPath'
            , pncDiffusionMode = pncDiffusionMode'
            , pncSnapshotInterval = pncSnapshotInterval'
+           , pncTestEnableDevelopmentNetworkProtocols =
+              pncTestEnableDevelopmentNetworkProtocols'
            , pncMaxConcurrencyBulkSync = pncMaxConcurrencyBulkSync'
            , pncMaxConcurrencyDeadline = pncMaxConcurrencyDeadline'
            , pncLoggingSwitch = Last $ Just pncLoggingSwitch'
@@ -315,6 +338,7 @@ defaultPartialNodeConfiguration =
     , pncSocketPath = mempty
     , pncDiffusionMode = Last $ Just InitiatorAndResponderDiffusionMode
     , pncSnapshotInterval = Last $ Just DefaultSnapshotInterval
+    , pncTestEnableDevelopmentNetworkProtocols = Last $ Just False
     , pncTopologyFile = Last . Just $ TopologyFile "configuration/cardano/mainnet-topology.json"
     , pncNodeIPv4Addr = mempty
     , pncNodeIPv6Addr = mempty
@@ -358,6 +382,11 @@ makeNodeConfiguration pnc = do
   traceConfig <- lastToEither "Missing TraceConfig" $ pncTraceConfig pnc
   diffusionMode <- lastToEither "Missing DiffusionMode" $ pncDiffusionMode pnc
   snapshotInterval <- lastToEither "Missing SnapshotInterval" $ pncSnapshotInterval pnc
+
+  testEnableDevelopmentNetworkProtocols <-
+    lastToEither "Missing TestEnableDevelopmentNetworkProtocols" $
+      pncTestEnableDevelopmentNetworkProtocols pnc
+
   ncTargetNumberOfRootPeers <-
     lastToEither "Missing TargetNumberOfRootPeers"
     $ pncTargetNumberOfRootPeers pnc
@@ -395,6 +424,7 @@ makeNodeConfiguration pnc = do
              , ncSocketPath = getLast $ pncSocketPath pnc
              , ncDiffusionMode = diffusionMode
              , ncSnapshotInterval = snapshotInterval
+             , ncTestEnableDevelopmentNetworkProtocols = testEnableDevelopmentNetworkProtocols
              , ncMaxConcurrencyBulkSync = getLast $ pncMaxConcurrencyBulkSync pnc
              , ncMaxConcurrencyDeadline = getLast $ pncMaxConcurrencyDeadline pnc
              , ncLoggingSwitch = loggingSwitch
