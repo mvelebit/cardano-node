@@ -49,10 +49,10 @@ severityBasicInfo :: BasicInfo -> SeverityS
 severityBasicInfo _ = Notice
 
 namesForBasicInfo :: BasicInfo -> [Text]
-namesForBasicInfo BICommon {}  = ["BasicInfo","Common"]
-namesForBasicInfo BIShelley {} = ["BasicInfo","ShelleyBased"]
-namesForBasicInfo BIByron {}   = ["BasicInfo","Byron"]
-namesForBasicInfo BINetwork {} = ["BasicInfo","Network"]
+namesForBasicInfo BICommon {}  = ["Common"]
+namesForBasicInfo BIShelley {} = ["ShelleyBased"]
+namesForBasicInfo BIByron {}   = ["Byron"]
+namesForBasicInfo BINetwork {} = ["Network"]
 
 protoBasicInfoCommon :: BasicInfoCommon
 protoBasicInfoCommon = undefined

@@ -33,12 +33,18 @@ data LimitingMessage =
   | StopLimiting Text Int
     -- ^ This message indicates the stop of frequency limiting,
     -- and gives the number of messages that has been suppressed
+  | RememberLimiting Text Int
+    -- ^ This message remembers of ongoing frequency limiting,
+    -- and gives the number of messages that has been suppressed
+
   deriving (Eq, Ord, Show, Generic)
 
 instance LogFormatting LimitingMessage where
   forHuman (StartLimiting txt) = "Start of frequency limiting for " <> txt
   forHuman (StopLimiting txt num) = "Stop of frequency limiting for " <> txt <>
     ". Suppressed " <> pack (show num) <> " messages."
+  forHuman (RememberLimiting txt num) = "Frequency limiting still active for " <> txt <>
+    ". Suppressed so far " <> pack (show num) <> " messages."
   forMachine _dtl (StartLimiting txt) = mkObject
         [ "kind" .= String "StartLimiting"
         , "name" .= String txt
@@ -48,13 +54,20 @@ instance LogFormatting LimitingMessage where
         , "name" .= String txt
         , "numSuppressed" .= Number (fromIntegral num)
         ]
-  asMetrics (StartLimiting _txt) = []
-  asMetrics (StopLimiting txt num) = [IntM ["SuppressedMessages " <> txt]
-                                        (fromIntegral num)]
+  forMachine _dtl (RememberLimiting txt num) = mkObject
+        [ "kind" .= String "RememberLimiting"
+        , "name" .= String txt
+        , "numSuppressed" .= Number (fromIntegral num)
+        ]
+  asMetrics (StartLimiting _txt)          = []
+  asMetrics (StopLimiting txt num)        = [IntM ["SuppressedMessages " <> txt]
+                                              (fromIntegral num)]
+  asMetrics (RememberLimiting _txt _num)  = []
 
 data FrequencyRec a = FrequencyRec {
     frMessage  :: Maybe a   -- ^ The message to pass
   , frLastTime :: Double    -- ^ The time since the last message did arrive in seconds
+  , frLastRem  :: Double    -- ^ The time since the last limiting remainder was send
   , frBudget   :: Double    -- ^ A budget which is used to decide when to start limiting
                               --   and stop limiting. When messages arrive in shorter frquency then
                               --   by the given thresholdFrequency budget is spend, and if they
@@ -90,7 +103,7 @@ limitFrequency thresholdFrequency limiterName vtracer ltracer = do
 --    trace ("limitFrequency called " <> unpack limiterName) $ pure ()
     foldMTraceM
       (checkLimiting (1.0 / thresholdFrequency))
-      (FrequencyRec Nothing  timeNow 0.0 Nothing)
+      (FrequencyRec Nothing timeNow 0.0 0.0 Nothing)
       (Trace $ T.contramap unfoldTrace (unpackTrace (filterTraceMaybe vtracer)))
   where
     checkLimiting :: Double -> FrequencyRec a -> LoggingContext -> a -> m (FrequencyRec a)
@@ -119,12 +132,14 @@ limitFrequency thresholdFrequency limiterName vtracer ltracer = do
                 (StartLimiting limiterName)
               pure fs  { frMessage     = Just message
                        , frLastTime    = timeNow
+                       , frLastRem     = timeNow
                        , frBudget      = newBudget
                        , frActive      = Just (0, timeNow)
                        }
             else  -- continue without limiting
               pure fs  { frMessage     = Just message
                        , frLastTime    = timeNow
+                       , frLastRem     = 0.0
                        , frBudget      = newBudget
                        }
         Just (nSuppressed, lastTimeSend) -> -- is active
@@ -140,22 +155,33 @@ limitFrequency thresholdFrequency limiterName vtracer ltracer = do
                        }
             else
               let lastPeriod = timeNow - lastTimeSend
-              in
+                  lastReminder = timeNow - frLastRem
+              in do
+                newFrLastRem <- if lastReminder > 15.0 -- send out every 15 seconds
+                                  then do
+                                    traceWith
+                                      (setSeverity Info
+                                        (withLoggingContext lc ltracer))
+                                      (RememberLimiting limiterName nSuppressed)
+                                    pure timeNow
+                                  else pure frLastRem
               -- trace ("lastPeriod " ++ show lastPeriod
               --        ++ " thresholdPeriod " ++ show thresholdPeriod) $
-                  if lastPeriod > thresholdPeriod
-                    then -- send
-                      pure fs  { frMessage     = Just message
-                               , frLastTime    = timeNow
-                               , frBudget      = newBudget
-                               , frActive      = Just (nSuppressed, timeNow)
-                               }
-                    else  -- suppress
-                      pure fs  { frMessage     = Nothing
-                               , frLastTime    = timeNow
-                               , frBudget      = newBudget
-                               , frActive      = Just (nSuppressed + 1, lastTimeSend)
-                               }
+                if lastPeriod > thresholdPeriod
+                  then -- send
+                    pure fs  { frMessage     = Just message
+                             , frLastTime    = timeNow
+                             , frLastRem     = newFrLastRem
+                             , frBudget      = newBudget
+                             , frActive      = Just (nSuppressed, timeNow)
+                             }
+                  else  -- suppress
+                    pure fs  { frMessage     = Nothing
+                             , frLastTime    = timeNow
+                             , frLastRem     = newFrLastRem
+                             , frBudget      = newBudget
+                             , frActive      = Just (nSuppressed + 1, lastTimeSend)
+                             }
     unfoldTrace ::
          (LoggingContext, Maybe TraceControl, Folding a (FrequencyRec a))
       -> (LoggingContext, Maybe TraceControl, Maybe a)

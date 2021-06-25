@@ -9,8 +9,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
 
-
--- {-# OPTIONS_GHC -Wno-unused-imports  #-}
+{-# OPTIONS_GHC -Wno-unused-imports  #-}
 
 
 module Cardano.TraceDispatcher.Tracers
@@ -52,9 +51,11 @@ import           Cardano.Tracing.OrphanInstances.Common (ToObject)
 import           Cardano.Tracing.Tracers
 import           "contra-tracer" Control.Tracer (Tracer (..), nullTracer)
 
-import           Ouroboros.Consensus.Block (CannotForge, ForgeStateUpdateError)
+import           Ouroboros.Consensus.Block (CannotForge, ForgeStateUpdateError,
+                     WithOrigin (..))
 import           Ouroboros.Consensus.BlockchainTime.WallClock.Util
                      (TraceBlockchainTimeEvent (..))
+import           Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
 import           Ouroboros.Consensus.Byron.Ledger.Config (BlockConfig)
 import           Ouroboros.Consensus.Ledger.Inspect (LedgerUpdate,
                      LedgerWarning)
@@ -497,14 +498,14 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
     configureTracers trConfig docResourceStats        [rsTr]
     configureTracers trConfig docBasicInfo            [biTr]
 
--- -- TODO JNF Code for debugging frequency limiting
---     void . forkIO $
---       sendContinously
---         0.1
---         cdbmTr
---         (ChainDB.TraceOpenEvent
---           (ChainDB.OpenedDB (Point Origin) (Point Origin)))
--- -- End of  debugging code
+-- TODO JNF Code for debugging frequency limiting
+    void . forkIO $
+      sendContinously
+        0.1
+        cdbmTr
+        (ChainDB.TraceOpenEvent
+          (ChainDB.OpenedDB (Point Origin) (Point Origin)))
+-- End of  debugging code
 
     mapM_ (traceWith biTr) basicInfos
     startResourceTracer rsTr
@@ -558,17 +559,17 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
 mkDispatchTracers blockConfig tOpts tr nodeKern ekgDirect _ _ _ _ _ =
   mkTracers blockConfig tOpts tr nodeKern ekgDirect
 
--- -- TODO JNF Code for debugging frequency limiting
--- sendContinously ::
---      Double
---   -> Trace IO m
---   -> m
---   -> IO ()
--- sendContinously delay tracer message = do
---   threadDelay (round (delay * 1000000.0))
---   traceWith tracer message
---   sendContinously delay tracer message
--- -- End of  debugging code
+-- TODO JNF Code for debugging frequency limiting
+sendContinously ::
+     Double
+  -> Trace IO m
+  -> m
+  -> IO ()
+sendContinously delay tracer message = do
+  threadDelay (round (delay * 1000000.0))
+  traceWith tracer message
+  sendContinously delay tracer message
+-- End of  debugging code
 
 docTracers :: forall blk t.
   ( Show t
@@ -769,6 +770,16 @@ docTracers fileName _ = do
                 namesForDiffusionInit
                 severityDiffusionInit
                 trBase
+    rsTr   <- mkStandardTracerSimple
+                "Resources"
+                (\ _ -> [])
+                (\ _ -> Info)
+                trBase
+    biTr   <- mkStandardTracerSimple
+                "BasicInfo"
+                namesForBasicInfo
+                severityBasicInfo
+                trBase
 
     configureTracers emptyTraceConfig docChainDBTraceEvent    [cdbmTr]
     configureTracers emptyTraceConfig docChainSyncClientEvent [cscTr]
@@ -804,6 +815,8 @@ docTracers fileName _ = do
     configureTracers emptyTraceConfig docLocalHandshake       [lhsTr]
     configureTracers emptyTraceConfig docLocalHandshake       [lhsTr]
     configureTracers emptyTraceConfig docDiffusionInit        [diTr]
+    configureTracers emptyTraceConfig docResourceStats        [rsTr]
+    configureTracers emptyTraceConfig docBasicInfo            [biTr]
 
     cdbmTrDoc    <- documentMarkdown
                 (docChainDBTraceEvent :: Documented
@@ -964,6 +977,12 @@ docTracers fileName _ = do
     diTrDoc      <-  documentMarkdown
                     (docDiffusionInit :: Documented ND.DiffusionInitializationTracer)
                     [diTr]
+    rsTrDoc      <-  documentMarkdown
+                    (docResourceStats :: Documented ResourceStats)
+                    [rsTr]
+    biTrDoc      <-  documentMarkdown
+                    (docBasicInfo :: Documented BasicInfo)
+                    [biTr]
 
     let bl = cdbmTrDoc
             ++ cscTrDoc
@@ -1000,6 +1019,8 @@ docTracers fileName _ = do
             ++ hsTrDoc
             ++ lhsTrDoc
             ++ diTrDoc
+            ++ rsTrDoc
+            ++ biTrDoc
 
     res <- buildersToText bl
     T.writeFile fileName res

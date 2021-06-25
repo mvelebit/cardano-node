@@ -68,11 +68,11 @@ instance LogFormatting BasicInfo where
       <> ", DnsProducers " <> show niDnsProducers
       <> ", IpProducers " <> show niIpProducers
   forHuman (BIByron (BasicInfoByron {..})) =
-      "System start time " <> show bibSystemStartTime
+      "Era Byron"
       <> ", Slot length " <> show bibSlotLength
       <> ", Epoch length " <> show bibEpochLength
   forHuman (BIShelley (BasicInfoShelleyBased {..})) =
-      "System start time " <> show bisSystemStartTime
+      "Era " <> bisEra
       <> ", Slot length " <> show bisSlotLength
       <> ", Epoch length " <> show bisEpochLength
       <> ", Slots per KESPeriod " <> show bisSlotsPerKESPeriod
@@ -99,6 +99,7 @@ instance LogFormatting BasicInfo where
                ]
   forMachine _dtal (BIShelley (BasicInfoShelleyBased {..})) =
       mkObject [ "kind" .= String "BasicInfoShelleyBased"
+               , "era"  .= String bisEra
                , "systemStartTime" .= String (show bisSystemStartTime)
                , "slotLength"  .= String (show bisSlotLength)
                , "epochLength" .= String (show bisEpochLength)
