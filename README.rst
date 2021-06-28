@@ -456,7 +456,7 @@ Thanks for your interest in building native tokens on Cardano. To help you get s
 
 `Cardano Forum discussion forum <https://forum.cardano.org/c/developers/cardano-tokens/150>`_
 
-`Developer Documentation for Native Tokens <https://developers.cardano.org/en/development-environments/native-tokens/native-tokens/>`_
+`Developer Documentation for Native Tokens <https://docs.cardano.org/native-tokens/learn/>`_
 
 
 **Please note that over the holiday period, technical support for the pre-production environment and token builder tool will be extremely limited**. Support is unavailable between the dates of 23rd - 27th December and 31 December - 3rd January inclusive. Outside these hours, our technical and community teams will be periodically checking in on the GitHub repo and dedicated Cardano Forum discussion forum, to expedite any urgent queries or requests. We encourage you to draw on community feedback and support as much as possible.
