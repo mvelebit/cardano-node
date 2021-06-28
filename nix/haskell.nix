@@ -130,6 +130,11 @@ let
           export CARDANO_NODE_CHAIRMAN=${config.hsPkgs.cardano-node-chairman.components.exes.cardano-node-chairman}/bin/cardano-node-chairman${pkgs.stdenv.hostPlatform.extensions.executable}
           export CARDANO_NODE_SRC=${src}
         ";
+
+        # cardano-testnet needs access to the git repository source
+        packages.cardano-testnet.preCheck = "
+          export CARDANO_NODE_SRC=${src}
+        ";
       })
       {
         packages = lib.genAttrs projectPackages
