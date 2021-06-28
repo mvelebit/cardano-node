@@ -107,7 +107,7 @@ protoLocalAdresses :: LocalAddresses addr
 protoLocalAdresses = LocalAddresses Nothing Nothing Nothing
 
 protoRes :: ConnectResult
-protoRes = undefined
+protoRes = ConnectSuccess
 
 protoDiffTime :: DiffTime
 protoDiffTime = secondsToDiffTime 1

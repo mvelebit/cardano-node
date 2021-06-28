@@ -211,9 +211,9 @@ data BackendConfig =
   deriving (Eq, Ord, Show, Generic)
 
 instance AE.ToJSON BackendConfig where
-  toJSON Forwarder  = AE.String "Forwarder"
-  toJSON EKGBackend = AE.String "EKGBackend"
-  toJSON (Stdout f) = AE.String $ "Stdout " <> (pack . show) f
+  toJSON Forwarder     = AE.String "Forwarder"
+  toJSON EKGBackend    = AE.String "EKGBackend"
+  toJSON (Stdout f)    = AE.String $ "Stdout " <> (pack . show) f
 
 instance AE.FromJSON BackendConfig where
   parseJSON (AE.String "Forwarder")            = pure Forwarder
@@ -225,7 +225,10 @@ instance AE.FromJSON BackendConfig where
   parseJSON (AE.String "Stdout MachineFormat") = pure $ Stdout MachineFormat
   parseJSON other                              = error (show other)
 
-data FormatLogging = HumanFormatColoured | HumanFormatUncoloured | MachineFormat
+data FormatLogging =
+    HumanFormatColoured
+  | HumanFormatUncoloured
+  | MachineFormat
   deriving (Eq, Ord, Show)
 
 -- Configuration options for individual namespace elements

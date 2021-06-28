@@ -65,10 +65,10 @@ protoHeader :: Header blk
 protoHeader = undefined
 
 protoPoint :: Point blk
-protoPoint = undefined
+protoPoint = Point Origin
 
 protoPointH :: Point (Header blk)
-protoPointH = undefined
+protoPointH = Point Origin
 
 protoOurTipBlock :: Our (Tip blk)
 protoOurTipBlock = undefined

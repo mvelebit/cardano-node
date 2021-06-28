@@ -274,12 +274,12 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
                 severityBlockFetchClient
                 allPublic
                 trBase trForward mbTrEKG
-    -- bfsTr  <- mkCardanoTracer
-    --             "BlockFetchServer"
-    --             namesForBlockFetchServer
-    --             severityBlockFetchServer
-    --             allPublic
-    --             trBase trForward mbTrEKG
+    bfsTr  <- mkCardanoTracer
+                "BlockFetchServer"
+                namesForBlockFetchServer
+                severityBlockFetchServer
+                allPublic
+                trBase trForward mbTrEKG
     fsiTr  <- mkCardanoTracer
                 "ForgeStateInfo"
                 namesForStateInfo
@@ -382,12 +382,12 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
                 severityTxSubmission2Node
                 allPublic
                 trBase trForward mbTrEKG
-    -- ipsTr   <-  mkCardanoTracer
-    --             "IpSubscription"
-    --             namesForIPSubscription
-    --             severityIPSubscription
-    --             allPublic
-    --             trBase trForward mbTrEKG
+    ipsTr   <-  mkCardanoTracer
+                "IpSubscription"
+                namesForIPSubscription
+                severityIPSubscription
+                allPublic
+                trBase trForward mbTrEKG
     dnssTr  <-  mkCardanoTracer
                 "DnsSubscription"
                 namesForDNSSubscription
@@ -467,7 +467,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
     configureTracers trConfig docChainSyncServerEvent [cssbTr]
     configureTracers trConfig docBlockFetchDecision   [bfdTr]
     configureTracers trConfig docBlockFetchClient     [bfcTr]
---    configureTracers trConfig docBlockFetchServer     [bfsTr]
+    configureTracers trConfig docBlockFetchServer     [bfsTr]
     configureTracers trConfig docForgeStateInfo       [fsiTr]
     configureTracers trConfig docTxInbound            [txiTr]
     configureTracers trConfig docLocalTxSubmissionServer [ltxsTr]
@@ -484,7 +484,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
     configureTracers trConfig docTBlockFetch          [tbfsTr]
     configureTracers trConfig docTTxSubmissionNode    [tsnTr]
     configureTracers trConfig docTTxSubmission2Node   [ts2nTr]
---    configureTracers trConfig docIPSubscription       [ipsTr]
+    configureTracers trConfig docIPSubscription       [ipsTr]
     configureTracers trConfig docDNSSubscription      [dnssTr]
     configureTracers trConfig docDNSResolver          [dnsrTr]
     configureTracers trConfig docErrorPolicy          [errpTr]
@@ -498,14 +498,14 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
     configureTracers trConfig docResourceStats        [rsTr]
     configureTracers trConfig docBasicInfo            [biTr]
 
--- TODO JNF Code for debugging frequency limiting
-    void . forkIO $
-      sendContinously
-        0.1
-        cdbmTr
-        (ChainDB.TraceOpenEvent
-          (ChainDB.OpenedDB (Point Origin) (Point Origin)))
--- End of  debugging code
+-- -- TODO JNF Code for debugging frequency limiting
+--     void . forkIO $
+--       sendContinously
+--         0.1
+--         cdbmTr
+--         (ChainDB.TraceOpenEvent
+--           (ChainDB.OpenedDB (Point Origin) (Point Origin)))
+-- -- End of  debugging code
 
     mapM_ (traceWith biTr) basicInfos
     startResourceTracer rsTr
@@ -518,7 +518,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
         , Consensus.chainSyncServerBlockTracer = Tracer (traceWith cssbTr)
         , Consensus.blockFetchDecisionTracer = Tracer (traceWith bfdTr)
         , Consensus.blockFetchClientTracer = Tracer (traceWith bfcTr)
-        , Consensus.blockFetchServerTracer = nullTracer -- TODO Tracer (traceWith bfsTr)
+        , Consensus.blockFetchServerTracer = Tracer (traceWith bfsTr)
         , Consensus.forgeStateInfoTracer =
             Tracer (traceWith (traceAsKESInfo (Proxy @blk) fsiTr))
         , Consensus.txInboundTracer = Tracer (traceWith txiTr)
@@ -542,7 +542,7 @@ mkDispatchTracers _blockConfig (TraceDispatcher _trSel) _tr _nodeKern _ekgDirect
         , NtN.tTxSubmissionTracer = Tracer (traceWith tsnTr)
         , NtN.tTxSubmission2Tracer = Tracer (traceWith ts2nTr)
         }
-      , ipSubscriptionTracer = nullTracer -- TODO Tracer (traceWith ipsTr)
+      , ipSubscriptionTracer = Tracer (traceWith ipsTr)
       , dnsSubscriptionTracer= Tracer (traceWith dnssTr)
       , dnsResolverTracer = Tracer (traceWith dnsrTr)
       , errorPolicyTracer = Tracer (traceWith errpTr)
@@ -843,7 +843,7 @@ docTracers fileName _ = do
                 (docBlockFetchClient :: Documented
                   (BlockFetch.TraceLabelPeer Peer (BlockFetch.TraceFetchClientState (Header blk))))
                 [bfcTr]
-    _bfsTrDoc    <- documentMarkdown
+    bfsTrDoc    <- documentMarkdown
                 (docBlockFetchServer :: Documented
                   (TraceBlockFetchServerEvent blk))
                 [bfsTr]
@@ -937,7 +937,7 @@ docTracers fileName _ = do
                         (TraceSendRecv
                           (TxSubmission2 (GenTxId blk) (GenTx blk)))))
                     [ts2nTr]
-    _ipsTrDoc   <-  documentMarkdown
+    ipsTrDoc   <-  documentMarkdown
                     (docIPSubscription :: Documented
                       (WithIPList (SubscriptionTrace Socket.SockAddr)))
                     [ipsTr]
@@ -990,7 +990,7 @@ docTracers fileName _ = do
             ++ cssbTrDoc
             ++ bfdTrDoc
             ++ bfcTrDoc
-  --          ++ bfsTrDoc
+            ++ bfsTrDoc
             ++ fsiTrDoc
             ++ txiTrDoc
             ++ txoTrDoc
@@ -1008,7 +1008,7 @@ docTracers fileName _ = do
             ++ tbfsTrDoc
             ++ tsnTrDoc
             ++ ts2nTrDoc
-  --          ++ ipsTrDoc
+            ++ ipsTrDoc
             ++ dnssTrDoc
             ++ dnsrTrDoc
             ++ errpTrDoc
